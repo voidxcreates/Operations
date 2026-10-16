@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.*;
+import java.util.List;
 import com.hotel.operations.dto.HotelResponse;
 import com.hotel.operations.dto.HotelResponse.*;
 
@@ -65,64 +66,74 @@ public class HotelAdminService {
     }
 
     // Add this method to your HotelAdminService class
-    public java.util.List<Plan> getAllActivePlans() {
+    public List<Plan> getAllActivePlans() {
         return planRepository.findByIsActive(1);
 }
-// Add these imports to the top of HotelAdminService.java
 
-
-// Add this mapping method inside your HotelAdminService class
-public HotelResponse mapToHotelResponse(Hotel hotel) {
-    long pricePerRoom = hotel.getPlan() != null ? hotel.getPlan().getPricePerRoom() : 0L;
+    public HotelResponse mapToHotelResponse(Hotel hotel) {
+        long pricePerRoom = hotel.getPlan() != null ? hotel.getPlan().getPricePerRoom() : 0L;
     
-    // Calculates the metric the React UI tries to read: rooms * per-room rate
-    long monthlyAmount = hotel.getRoomCount() * pricePerRoom;
+        long monthlyAmount = hotel.getRoomCount() * pricePerRoom;
 
-    PlanSummary planSummary = hotel.getPlan() != null ? 
-        new PlanSummary(hotel.getPlan().getCode(), hotel.getPlan().getName(), pricePerRoom) : null;
+        PlanSummary planSummary = hotel.getPlan() != null ?
+            new PlanSummary(hotel.getPlan().getCode(), hotel.getPlan().getName(), pricePerRoom) : null;
 
-    // Use fallback strings ("-") if database entries are blank or null to match your UI presentation
-    PersonSummary ownerSummary = new PersonSummary(
-        hotel.getOwnerName() != null ? hotel.getOwnerName() : "-",
-        hotel.getOwnerPhone() != null ? hotel.getOwnerPhone() : "-",
-        hotel.getOwnerEmail() != null ? hotel.getOwnerEmail() : "-"
-    );
+        PersonSummary ownerSummary = new PersonSummary(
+            hotel.getOwnerName() != null ? hotel.getOwnerName() : "-",
+            hotel.getOwnerPhone() != null ? hotel.getOwnerPhone() : "-",
+            hotel.getOwnerEmail() != null ? hotel.getOwnerEmail() : "-"
+        );
 
-    StaffSummary receptionistSummary = new StaffSummary(
-        hotel.getReceptionistName() != null ? hotel.getReceptionistName() : "-",
-        hotel.getReceptionistPhone() != null ? hotel.getReceptionistPhone() : "-"
-    );
-    return new HotelResponse(
-        hotel.getHotelId(),
-        hotel.getName(),
-        hotel.getAddressLine(),
-        hotel.getCity(),
-        hotel.getState(),
-        hotel.getPincode(),
-        hotel.getRoomCount(),
-        planSummary,
-        monthlyAmount,
-        hotel.getStatus(),
-        hotel.getJoinedAt(),
-        hotel.getPlanEndsAt(),
-        ownerSummary,
-        receptionistSummary
-    );
-}
+        StaffSummary receptionistSummary = new StaffSummary(
+            hotel.getReceptionistName() != null ? hotel.getReceptionistName() : "-",
+            hotel.getReceptionistPhone() != null ? hotel.getReceptionistPhone() : "-"
+        );
+        return new HotelResponse(
+            hotel.getHotelId(),
+            hotel.getName(),
+            hotel.getAddressLine(),
+            hotel.getCity(),
+            hotel.getState(),
+            hotel.getPincode(),
+            hotel.getRoomCount(),
+            planSummary,
+            monthlyAmount,
+            hotel.getStatus(),
+            hotel.getJoinedAt(),
+            hotel.getPlanEndsAt(),
+            ownerSummary,
+            receptionistSummary
+        );
+    }
 
 
-@org.springframework.transaction.annotation.Transactional
-public void updateHotelStatus(Long id, com.hotel.operations.dto.HotelRequests.UpdateStatusRequest req) {
-    Hotel hotel = hotelRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Target hotel instance not found"));
+    @Transactional
+    public void updateHotelStatus(Long id, UpdateStatusRequest req) {
+        Hotel hotel = hotelRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Target hotel instance not found"));
 
-    // Modify target fields reflecting structural request modifications
-    hotel.setStatus(req.status());
-    hotel.setSuspendedReason(req.status().equals("SUSPENDED") ? req.reason() : null);
-    hotel.setUpdatedAt(java.time.OffsetDateTime.now());
+        hotel.setStatus(req.status());
+        hotel.setSuspendedReason(req.status().equals("SUSPENDED") ? req.reason() : null);
+        hotel.setUpdatedAt(java.time.OffsetDateTime.now());
 
-    // The transaction automatically commits updates back to Oracle on execution finish
-    hotelRepository.save(hotel);
-}
+        hotelRepository.save(hotel);
+    }
 
+    public void renewHotelPlan(Long id) {
+        Hotel hotel = hotelRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Target hotel instance not found"));
+
+        OffsetDateTime currTime = OffsetDateTime.now();
+        if(hotel.getStatus().equals("SUSPENDED")){
+            hotel.setStatus("ACTIVE");
+            hotel.setPlanEndsAt(currTime.plusMonths(hotel.getPlan().getDurationMonths()));
+        }
+        else{
+            hotel.setPlanEndsAt(hotel.getPlanEndsAt().plusMonths(hotel.getPlan().getDurationMonths()));
+        }
+
+        hotel.setUpdatedAt(currTime);
+
+        hotelRepository.save(hotel);
+    }
 }
