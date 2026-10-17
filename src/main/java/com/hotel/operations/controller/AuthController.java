@@ -10,6 +10,8 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -41,28 +43,73 @@ public class AuthController {
         return ResponseEntity.ok(loginResponse);
     }
 
-    // GET /api/auth/me
     @GetMapping("/me")
-    public ResponseEntity<UserProfile> getMe(@RequestHeader(value = "Authorization", required = false) String token) {
-        if (token == null || !token.startsWith("Bearer ")) {
+    public ResponseEntity<UserProfile> getMe(
+            @AuthenticationPrincipal Jwt jwt) {
+
+        if (jwt == null) {
             return ResponseEntity.status(401).build();
         }
-        
-        // For development loop, we decrypt/parse user ID from mock token
-        // In this setup, we mock extract the first admin row (ID: 1) to pass the React boot check
-        UserProfile mockUser = authService.getUserProfileById(1L);
-        return ResponseEntity.ok(mockUser);
+
+        Object userIdClaim = jwt.getClaim("userId");
+
+        if (!(userIdClaim instanceof Number)) {
+            return ResponseEntity.status(401).build();
+        }
+
+        Long userId = ((Number) userIdClaim).longValue();
+
+        UserProfile user = authService.getUserProfileById(userId);
+
+        return ResponseEntity.ok(user);
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletResponse response) {
-        // Expire the cookie instantly on execution
+    public ResponseEntity<Void> logout(
+            @CookieValue(name = "refreshToken", required = false) String refreshToken,
+            HttpServletResponse response) {
+
+        // Revoke the refresh token in the database
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            authService.revokeRefreshToken(refreshToken);
+        }
+
+        // Expire the refresh-token cookie
         Cookie cookie = new Cookie("refreshToken", null);
         cookie.setHttpOnly(true);
-        cookie.setPath("/api/auth");
-        cookie.setMaxAge(0); 
+        cookie.setSecure(false); // Set to true in production when using HTTPS
+        cookie.setPath("/");     // Must match the path used during login
+        cookie.setMaxAge(0);
+
         response.addCookie(cookie);
-        
+
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponse> refresh(
+            @CookieValue(name = "refreshToken", required = false)
+            String refreshToken,
+            HttpServletResponse response) {
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return ResponseEntity.status(401).build();
+        }
+
+        AuthService.RefreshResult result =
+                authService.rotateRefreshToken(refreshToken);
+
+        Cookie cookie = new Cookie(
+                "refreshToken",
+                result.refreshToken()
+        );
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false); // Set true in production over HTTPS
+        cookie.setPath("/");
+        cookie.setMaxAge(7 * 24 * 60 * 60);
+
+        response.addCookie(cookie);
+
+        return ResponseEntity.ok(result.loginResponse());
     }
 }
