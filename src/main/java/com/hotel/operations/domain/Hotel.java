@@ -55,12 +55,6 @@ public class Hotel {
     @Column(length = 6)
     private String pincode;
 
-    @Column(name = "receptionist_name", length = 120)
-    private String receptionistName;
-
-    @Column(name = "receptionist_phone", length = 10)
-    private String receptionistPhone;
-
     @Column(name = "created_by")
     private Long createdBy;
 

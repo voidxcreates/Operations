@@ -2,17 +2,24 @@ package com.hotel.operations.controller;
 
 import com.hotel.operations.domain.AdminSummaryView;
 import com.hotel.operations.domain.Hotel;
+import com.hotel.operations.domain.HotelChangeNotification;
 import com.hotel.operations.domain.Plan;
+import com.hotel.operations.dto.HotelRequests.UpdateHotelRequest;
+import com.hotel.operations.dto.HotelRequests.UpdatePlanRequest;
 import com.hotel.operations.dto.HotelRequests.CreateHotelRequest;
 import com.hotel.operations.dto.HotelRequests.UpdateStatusRequest;
+import com.hotel.operations.dto.HotelRequests.AcknowledgeRequest;
 import com.hotel.operations.dto.HotelResponse;
 import com.hotel.operations.service.HotelAdminService;
+import com.hotel.operations.service.NotificationAdminService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,6 +31,9 @@ public class HotelAdminController {
 
     @Autowired
     private HotelAdminService adminService;
+
+    @Autowired
+    private NotificationAdminService notificationAdminService;
 
     @GetMapping("/summary")
     public ResponseEntity<AdminSummaryView> getSummary() {
@@ -51,11 +61,17 @@ public class HotelAdminController {
     }
 
     @PostMapping("/hotels")
-    public ResponseEntity<Hotel> addHotel(@Valid @RequestBody CreateHotelRequest req) {
-        return new ResponseEntity<>(adminService.createNewHotel(req), HttpStatus.CREATED);
+    public ResponseEntity<HotelResponse> addHotel(
+            @Valid @RequestBody CreateHotelRequest req,
+            @AuthenticationPrincipal Jwt jwt) {
 
+        Long createdBy = jwt.getClaim("userId");
+
+        Hotel savedHotel = adminService.createNewHotel(req, createdBy);
+        HotelResponse response = adminService.mapToHotelResponse(savedHotel);
+
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
-
 
     @GetMapping("/plans")
     public ResponseEntity<List<Plan>> getPlans() {
@@ -89,4 +105,55 @@ public class HotelAdminController {
 
         return ResponseEntity.noContent().build();
     }
+
+
+    @PutMapping("/hotels/{id}")
+    public ResponseEntity<HotelResponse> updateHotel(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateHotelRequest req) {
+
+        Hotel updatedHotel = adminService.updateHotel(id, req);
+        HotelResponse response = adminService.mapToHotelResponse(updatedHotel);
+
+        return ResponseEntity.ok(response);
+    }
+
+
+    @PatchMapping("/hotels/{id}/plan")
+    public ResponseEntity<Void> updateHotelPlan(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdatePlanRequest req) {
+
+        adminService.updateHotelPlan(id, req);
+
+        return ResponseEntity.noContent().build();
+    }
+
+
+    @GetMapping("/notifications")
+    public ResponseEntity<List<HotelChangeNotification>> getPendingNotifications() {
+        return ResponseEntity.ok(
+                notificationAdminService.getPendingNotifications());
+    }
+
+    @PatchMapping("/notifications/acknowledge")
+    public ResponseEntity<Void> acknowledgeNotifications(
+            @Valid @RequestBody AcknowledgeRequest req,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        Number userIdClaim = jwt.getClaim("userId");
+
+        if (userIdClaim == null) {
+            throw new IllegalStateException(
+                    "Authenticated user ID is missing from the access token");
+        }
+
+        notificationAdminService.acknowledgeNotifications(
+                req.ids(), userIdClaim.longValue());
+
+        return ResponseEntity.noContent().build();
+    }
+
+
+
 }

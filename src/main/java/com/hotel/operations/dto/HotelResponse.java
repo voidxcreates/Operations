@@ -1,6 +1,7 @@
 package com.hotel.operations.dto;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 public record HotelResponse(
     Long id,
@@ -16,9 +17,15 @@ public record HotelResponse(
     OffsetDateTime joinedAt,
     OffsetDateTime planEndsAt,
     PersonSummary owner,
-    StaffSummary receptionist
+    List<ReceptionistSummary> receptionists
 ) {
     public record PlanSummary(String code, String name, Long pricePerRoom) {}
     public record PersonSummary(String name, String phone, String email) {}
-    public record StaffSummary(String name, String phone) {}
+
+    public record ReceptionistSummary(
+            Long receptionistId,
+            String name,
+            String phone
+    ) {}
+
 }
